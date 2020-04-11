@@ -5,6 +5,7 @@
 #include <fstream>
 #include <thread>
 #include <memory>
+#include <queue>
 
 class observer
 {
@@ -16,6 +17,7 @@ class handler
 {
 private:
   std::vector<std::string> v;
+  std::queue<std::vector<std::string>> q;
   std::time_t tim;
   std::vector<std::shared_ptr<observer>> view;
 public:
@@ -31,16 +33,16 @@ public:
 
     v.push_back(str);
   }
-  std::time_t& getTime()
-  {
-    return tim;
-  }
-  void setTime()
-  {
+
+  void setTime(){
     tim = std::time(nullptr);
   }
-  auto size()
-  {
+
+  std::string getTime(){
+    return std::to_string(tim);
+  }
+
+  auto size(){
     return v.size();
   }
 
@@ -48,11 +50,17 @@ public:
   {
     if (!v.empty())
     {
+      v.push_back(getTime());
+      q.push(v);
+      v.clear();
+    }
+    if (!q.empty())
+    {
       for (auto &s : view)
       {
-        s->update(v);
+        s->update(q.front());
       }
-      v.clear();
+      q.pop();
     }
   }
 };
@@ -68,9 +76,9 @@ public:
   void update(std::vector<std::string>& v) override
   {
     std::cout << "bulk:";
-    for(auto &i: v)
+    for(auto i = v.begin(); i != v.end()-1; i++)
     {
-      std::cout << " " << i;
+      std::cout << " " << *i;
     }
     std::cout << std::endl;
   }
@@ -78,24 +86,21 @@ public:
 
 class record_observer : public observer, public std::enable_shared_from_this<record_observer>
 {
-private:
-  std::time_t& tim;
 public:
-  record_observer(std::unique_ptr<handler> &ha):tim(ha->getTime()){}
+  record_observer(){}
   void subscribe(std::unique_ptr<handler> &ha)
   {
-    tim = ha->getTime();
     ha->subscribe(shared_from_this());
   }
   void update(std::vector<std::string>& v) override
   {
-    std::string t = std::to_string(tim);
-    std::ofstream file("bulk" + t + ".log", std::ios::trunc | std::ios::binary );
+    // std::string t = std::to_string(tim);
+    std::ofstream file("bulk" + v.back() + ".log", std::ios::trunc | std::ios::binary );
     if (file)
     {
-      for(auto &i: v)
+      for(auto i = v.begin(); i != v.end() - 1; i++)
       {
-        file << i << std::endl;
+        file << *i << std::endl;
       }
     }
     file.close();
