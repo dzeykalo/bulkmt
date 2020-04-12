@@ -15,7 +15,7 @@ int main(int argc, char* argv[])
   auto hand = std::make_unique<handler>();
 
   auto out = std::make_shared<output_observer>();
-  auto rec = std::make_shared<record_observer>(hand);
+  auto rec = std::make_shared<record_observer>();
   out->subscribe(hand);
   rec->subscribe(hand);
 

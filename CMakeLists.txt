@@ -7,6 +7,8 @@ endif (NOT "${PRO_PATCH}")
 
 project(bulkmt VERSION 0.0.${PRO_PATCH})
 
+find_package(Threads REQUIRED)
+
 add_executable(bulkmt main.cpp observer.h)
 
 set_target_properties(
@@ -15,6 +17,10 @@ set_target_properties(
   CXX_STANDARD_REQUIRED ON
   COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;"
 )
+
+target_link_libraries(bulkmt
+        Threads::Threads
+        )
 
 install(TARGETS bulkmt RUNTIME DESTINATION bin)
 
