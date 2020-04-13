@@ -9,6 +9,7 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include "hard.h"
 
 class observer
 {
@@ -103,7 +104,7 @@ private:
         std::cout << "bulk:";
         for(auto i = q.front().begin(); i != q.front().end()-1; i++)
         {
-          std::cout << " " << *i;
+          std::cout << " " << fa(*i);
         }
         std::cout << std::endl;
         q.pop();
@@ -173,7 +174,7 @@ private:
         {
           for(auto i = q.front().begin(); i != q.front().end() - 1; i++)
           {
-            file << *i << std::endl;
+            file << fi(*i) << std::endl;
           }
         }
         file.close();
