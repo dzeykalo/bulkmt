@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include <string>
 #include <ctime>
@@ -13,7 +14,7 @@ class observer
 {
 public:
   virtual void update(std::vector<std::string>& v) = 0;
-  virtual void stop() = 0;
+  virtual std::string stop() = 0;
 };
 
 class handler
@@ -22,14 +23,20 @@ private:
   std::vector<std::string> v;
   std::time_t tim;
   std::vector<std::shared_ptr<observer>> view;
+  unsigned int line{0};
+  unsigned int command{0};
+  unsigned int block{0};
 public:
   handler(){}
   ~handler()
   {
+    std::stringstream ss;
+    ss << "main thread - " << line << " line, " << block << " block, " << command << " command" << std::endl;
     for (auto &s : view)
     {
-      s->stop();
+      ss << s->stop();
     }
+    std::cout << ss.str();
   }
 
   void subscribe(std::shared_ptr<observer> obs) {
@@ -42,23 +49,23 @@ public:
 
     v.push_back(str);
   }
-
-  void setTime(){
-    tim = std::time(nullptr);
+  void setTime(){ 
+    tim = std::time(nullptr); 
   }
-
   std::string getTime(){
     return std::to_string(tim);
   }
-
   auto size(){
     return v.size();
   }
+  void line_count(){ ++line; }
 
   void show()
   {
     if (!v.empty())
     {
+      command += v.size();
+      ++block;
       v.push_back(getTime());
       for (auto &s : view)
       {
@@ -76,6 +83,8 @@ private:
   std::thread thr;
   std::queue<std::vector<std::string>> q;
   bool alive = false;
+  unsigned int command{0};
+  unsigned int block{0};
 
   void worker()
   {
@@ -89,6 +98,8 @@ private:
       
       {
         std::lock_guard<std::mutex> lock(mtx);
+        command += q.front().size()-1;
+        ++block;
         std::cout << "bulk:";
         for(auto i = q.front().begin(); i != q.front().end()-1; i++)
         {
@@ -108,17 +119,22 @@ public:
   void update(std::vector<std::string>& v) override
   {
     q.push(v);
+
     if (!alive)
     {
       alive = true;
       thr = std::thread(&output_observer::worker, this);
     }
   }
-  void stop() override
+  std::string stop() override
   {
     alive = false;
+    std::stringstream ss;
     if (thr.joinable())
-      thr.join();    
+      thr.join();
+
+    ss << "log thread - " << block << " block, " << command << " command" << std::endl;
+    return ss.str(); 
   }
   
 };
@@ -126,37 +142,44 @@ public:
 class record_observer : public observer, public std::enable_shared_from_this<record_observer>
 {
 private:
-  std::array<std::thread, 2> thr;
-  std::array<std::queue<std::vector<std::string>>, 2> q;
+  static const int size = 2;
+  std::array<std::thread, size> thr;
+  std::queue<std::vector<std::string>> q;
   std::mutex mtx;
   bool alive{false};
-  std::atomic_int add{0};
-  unsigned int count{0};
+  unsigned int add{0};
+  std::array<unsigned int, size> command{{0,0}};
+  std::array<unsigned int, size> block{{0,0}};
 
-  void worker(std::queue<std::vector<std::string>> &qu)
-  {
-    while(alive || !qu.empty())
+  void worker(unsigned int &com, unsigned int &bkt)
+  {     
+    while(alive || !q.empty())
     {
-      if (qu.empty())
+      
+      if (q.empty())
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
       }
-
-      std::string section = std::to_string(add++);
+      
       {
         std::lock_guard<std::mutex> lock(mtx);
-        std::ofstream file("bulk" + qu.front().back() + section + ".log", std::ios::trunc | std::ios::binary );
+        if (q.empty()) continue; 
+        com += q.front().size()-1;
+        ++bkt;
+        std::string section = std::to_string(add++);
+        std::ofstream file("bulk" + q.front().back() + section + ".log", std::ios::trunc | std::ios::binary );
         if (file)
         {
-          for(auto i = qu.front().begin(); i != qu.front().end() - 1; i++)
+          for(auto i = q.front().begin(); i != q.front().end() - 1; i++)
           {
             file << *i << std::endl;
           }
         }
         file.close();
-        qu.pop();
+        q.pop();
       }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
   }
 public:
@@ -167,25 +190,27 @@ public:
   }
   void update(std::vector<std::string>& v) override
   {
-    q[count].push(v);
-    if (count++ >= thr.size() - 1)
-      count = 0;
+    
+    q.push(v);
     
     if (!alive)
     {
       alive = true;
-      for(auto i = 0; i < thr.size(); ++i)
-        thr[i] = std::thread(&record_observer::worker, this, std::ref(q[i]));
+      for(int i = 0; i < size; i++)
+        thr[i] = std::thread(&record_observer::worker, this, std::ref(command[i]), std::ref(block[i]));
     }
   }
-  void stop() override
+  std::string stop() override
   {
     alive = false;
-    for(auto &i : thr)
+    std::stringstream ss;
+    for(int i = 0; i < size; i++)
     {
-      if (i.joinable())
-        i.join(); 
-    } 
+      if (thr[i].joinable())
+        thr[i].join();
+      ss << "file" << i+1 << " thread - " << block[i] << " block, " << command[i] << " command" << std::endl;
+    }
+    return ss.str();
   }
 };
 

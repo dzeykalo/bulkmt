@@ -22,6 +22,7 @@ int main(int argc, char* argv[])
 
   while(std::getline(std::cin, input))
   {
+    hand->line_count();
     switch (bkt)
     {
       case 0:
