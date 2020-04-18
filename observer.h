@@ -4,6 +4,7 @@
 #include <string>
 #include <ctime>
 #include <fstream>
+#include <condition_variable>
 #include <memory>
 #include <queue>
 #include <mutex>
@@ -146,41 +147,41 @@ private:
   static const int size = 2;
   std::array<std::thread, size> thr;
   std::queue<std::vector<std::string>> q;
-  std::mutex mtx;
-  bool alive{false};
-  unsigned int add{0};
+  std::mutex q_mtx;
+  std::mutex f_mtx;
+  std::atomic_bool alive{false};
+  std::atomic_uint add{0};
   std::array<unsigned int, size> command{{0,0}};
   std::array<unsigned int, size> block{{0,0}};
+  std::condition_variable cv;
 
   void worker(unsigned int &com, unsigned int &bkt)
   {     
-    while(alive || !q.empty())
-    {
-      
-      if (q.empty())
+    while(alive || !q.empty()){
+      std::unique_lock<std::mutex> ulk(q_mtx);
+      cv.wait(ulk, [&](){ return !q.empty() || !alive; });
+      if (!q.empty())
       {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        continue;
-      }
-      
-      {
-        std::lock_guard<std::mutex> lock(mtx);
-        if (q.empty()) continue; 
-        com += q.front().size()-1;
-        ++bkt;
-        std::string section = std::to_string(add++);
-        std::ofstream file("bulk" + q.front().back() + section + ".log", std::ios::trunc | std::ios::binary );
-        if (file)
-        {
-          for(auto i = q.front().begin(); i != q.front().end() - 1; i++)
-          {
-            file << fi(*i) << std::endl;
-          }
-        }
-        file.close();
+        auto qf = std::move(q.front());
         q.pop();
+        ulk.unlock();
+
+        com += qf.size()-1;
+        ++bkt;
+        std::stringstream fname;
+        fname << "bulk" << qf.back() << ++add << ".log";
+        std::stringstream data;
+        for(auto i = qf.begin(); i != std::prev(qf.end()); i++)
+          data << fa(*i) << std::endl;
+
+        {
+          std::lock_guard<std::mutex> lock(f_mtx);
+          std::ofstream file( fname.str(), std::ios::trunc | std::ios::binary );
+          if (file)
+            file << data.str();
+          file.close();
+        }
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
   }
 public:
@@ -191,19 +192,21 @@ public:
   }
   void update(std::vector<std::string>& v) override
   {
-    
-    q.push(v);
-    
-    if (!alive)
-    {
+    if (!alive){
       alive = true;
       for(int i = 0; i < size; i++)
         thr[i] = std::thread(&record_observer::worker, this, std::ref(command[i]), std::ref(block[i]));
     }
+    {
+      std::lock_guard<std::mutex> lock(q_mtx);
+      q.push(v);
+    }
+    cv.notify_one();
   }
   std::string stop() override
   {
     alive = false;
+    cv.notify_all();
     std::stringstream ss;
     for(int i = 0; i < size; i++)
     {
