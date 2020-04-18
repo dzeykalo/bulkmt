@@ -87,28 +87,25 @@ private:
   bool alive = false;
   unsigned int command{0};
   unsigned int block{0};
+  std::condition_variable cv;
 
   void worker()
   {
     while(alive || !q.empty())
     {
-      if (q.empty())
-      {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        continue;
-      }
-      
-      {
-        std::lock_guard<std::mutex> lock(mtx);
-        command += q.front().size()-1;
+      std::unique_lock<std::mutex> ulk(mtx);
+      cv.wait(ulk, [&](){ return !q.empty() || !alive; });
+      if (!q.empty()){
+        auto qf = std::move(q.front());
+        q.pop();
+        ulk.unlock();
+
+        command += qf.size()-1;
         ++block;
         std::cout << "bulk:";
-        for(auto i = q.front().begin(); i != q.front().end()-1; i++)
-        {
+        for(auto i = qf.begin(); i != std::prev(qf.end()); i++)
           std::cout << " " << fa(*i);
-        }
         std::cout << std::endl;
-        q.pop();
       }
     }
   }
@@ -120,17 +117,21 @@ public:
   }
   void update(std::vector<std::string>& v) override
   {
-    q.push(v);
-
     if (!alive)
     {
       alive = true;
       thr = std::thread(&output_observer::worker, this);
     }
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      q.push(v);
+    }
+    cv.notify_one();
   }
   std::string stop() override
   {
     alive = false;
+    cv.notify_all();
     std::stringstream ss;
     if (thr.joinable())
       thr.join();
@@ -172,7 +173,7 @@ private:
         fname << "bulk" << qf.back() << ++add << ".log";
         std::stringstream data;
         for(auto i = qf.begin(); i != std::prev(qf.end()); i++)
-          data << fa(*i) << std::endl;
+          data << fi(*i) << std::endl;
 
         {
           std::lock_guard<std::mutex> lock(f_mtx);
