@@ -1,5 +1,6 @@
 #include "observer.h"
-
+#include "output_observer.h"
+#include "record_observer.h"
 
 int main(int argc, char* argv[])
 {

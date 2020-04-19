@@ -9,16 +9,19 @@ project(bulkmt VERSION 0.0.${PRO_PATCH})
 
 find_package(Threads REQUIRED)
 
-add_executable(bulkmt main.cpp observer.h)
+add_executable(bulkmt main.cpp)
+
+add_library(obs STATIC observer.cpp output_observer.cpp record_observer.cpp hard.cpp)
 
 set_target_properties(
-  bulkmt PROPERTIES
+  bulkmt obs PROPERTIES
   CXX_STANDARD 14
   CXX_STANDARD_REQUIRED ON
   COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;"
 )
 
 target_link_libraries(bulkmt
+        obs
         Threads::Threads
         )
 
